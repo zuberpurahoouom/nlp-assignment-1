@@ -20,5 +20,5 @@ def read_queries_dev(path="queries.dev.tsv", limit=None):
                 break
             qid, query = line.rstrip("\n").split("\t", 1)
             rows.append((qid, query))
-    df = pd.DataFrame(rows, columns=["qid", "text"])
+    df = pd.DataFrame(rows, columns=["qid", "query"])
     return df
