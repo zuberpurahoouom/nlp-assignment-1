@@ -1,9 +1,15 @@
 import pickle
-from tqdm import tqdm
 from rank_bm25 import BM25Okapi
-from preprocess import tokenize
 import os
 import numpy as np
+import concurrent.futures
+from tqdm import tqdm
+from pre_process import tokenize
+
+idx_dir = "indexes/bm25"
+# At module level
+bm25 = None
+pids = None
 
 def build_bm25(df, out_dir="indexes/bm25"):
     os.makedirs(out_dir, exist_ok=True)
@@ -14,17 +20,28 @@ def build_bm25(df, out_dir="indexes/bm25"):
     with open(f"{out_dir}/pids.pkl","wb") as f:
         pickle.dump(df["pid"].tolist(), f)
 
+def process_query(args):
+    global bm25, pids
+    if bm25 is None:
+        with open(f"{idx_dir}/bm25.pkl", "rb") as f:
+            bm25 = pickle.load(f)
+    if pids is None:
+        with open(f"{idx_dir}/pids.pkl", "rb") as f:
+            pids = pickle.load(f)
+    qid, q, topk, tag = args
+    hits = query_bm25(q, topk=topk, bm25=bm25, pids=pids)
+    return [
+        f"{qid}\tQ0\t{pid}\t{rank}\t{score:.6f}\t{tag}"
+        for rank, (pid, score) in enumerate(hits, start=1)
+    ]
+
 def write_trec_run(queries, out_path, topk=1000, tag="bm25"):
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)  # Ensure directory exists
+    args_list = [(qid, q, topk, tag) for qid, q, _ in queries.itertuples(index=False)]
     lines = []
-    idx_dir = "indexes/bm25"
-    with open(f"{idx_dir}/bm25.pkl", "rb") as f:
-        bm25 = pickle.load(f)
-    with open(f"{idx_dir}/pids.pkl", "rb") as f:
-        pids = pickle.load(f)
-    for qid, q in tqdm(queries.itertuples(index=False), total=len(queries), desc="Processing queries"):
-        hits = query_bm25(q, topk=topk, bm25=bm25, pids=pids)  # -> [(pid, score), ...]
-        for rank, (pid, score) in enumerate(hits, start=1):
-            lines.append(f"{qid}\tQ0\t{pid}\t{rank}\t{score:.6f}\t{tag}")
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        for result in tqdm(executor.map(process_query, args_list), total=len(args_list), desc="Processing queries"):
+            lines.extend(result)
     with open(out_path, "w") as f:
         f.write("\n".join(lines))
 
