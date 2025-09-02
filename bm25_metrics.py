@@ -1,9 +1,13 @@
 import math
-from index_bm25 import query_bm25
-from tqdm.auto import tqdm
-import pandas as pd
 
-# ---------- Metrics (from scratch) ----------
+import pandas as pd
+from tqdm.auto import tqdm
+from whoosh import index
+from whoosh.qparser import QueryParser, OrGroup
+from whoosh.scoring import BM25F
+from pre_process import tokenize
+
+
 def _dcg(rels):
     return sum((2**rel - 1) / math.log2(i + 2) for i, rel in enumerate(rels))
 
@@ -15,7 +19,6 @@ def ndcg_at_k(ranked_pids, rel_dict, k=10):
     return 0.0 if idcg == 0 else dcg / idcg
 
 def average_precision_at_k(ranked_pids, rel_set, k=10):
-    """AP@k over binary relevance; queries with no relevant docs -> AP=0 (common convention)."""
     num_rel = 0
     ap = 0.0
     for i, pid in enumerate(ranked_pids[:k], start=1):
@@ -32,36 +35,38 @@ def recall_at_k(ranked_pids, rel_set, k=100):
     return hits / len(rel_set)
 
 def qrels_df_to_dict(qrels_df: pd.DataFrame) -> dict[str, dict[str, int]]:
-    # expects columns: qid, pid, rel (strings for qid/pid)
     g = qrels_df.groupby("qid", sort=False)
     return {
         qid: dict(zip(grp["pid"].astype(str), grp["rel"].astype(int)))
         for qid, grp in g
     }
 
-# ---------- Evaluation loop (no TREC file needed) ----------
-def evaluate_bm25_in_memory(queries_df, qrels, topk_run=1000, k_ndcg=10, k_map=10, k_rec=100, progress=True):
-    """Runs retrieval and returns dict of mean metrics."""
+IDX_DIR = "indexes/whoosh"
+K1, B = 1.2, 0.75
+
+def evaluate_bm25_in_memory(queries_df, qrels_dict, topk_run=1000, k_ndcg=10, k_map=10, k_rec=100, progress=True):
+    ix = index.open_dir(IDX_DIR)
     ndcgs, maps, recalls = [], [], []
+    with ix.searcher(weighting=BM25F(k1=K1, b=B)) as searcher:
+        qp = QueryParser("text", schema=ix.schema, group=OrGroup)
+        it = queries_df[["qid","query"]].itertuples(index=False, name=None)
+        if progress:
+            it = tqdm(it, total=len(queries_df), desc="Evaluating", unit="q")
 
-    it = queries_df[["qid", "query"]].itertuples(index=False, name=None)
-    if progress:
-        it = tqdm(it, total=len(queries_df), desc="Evaluating", unit="q")
+        for qid, query in it:
+            q = qp.parse(" ".join(tokenize(query)))
+            results = searcher.search(q, limit=topk_run)
+            ranked_pids = [r["pid"] for r in results]
 
-    for qid, query in it:
-        hits = query_bm25(query, topk=topk_run)  # [(pid, score), ...]
-        ranked_pids = [pid for pid, _ in hits]
+            rel_dict = qrels_dict.get(str(qid), {})
+            rel_set  = {pid for pid, rel in rel_dict.items() if rel > 0}
 
-        rel_dict = qrels.get(str(qid), {})
-        rel_set  = {pid for pid, rel in rel_dict.items() if rel > 0}
-
-        ndcgs.append(ndcg_at_k(ranked_pids, rel_dict, k=k_ndcg))
-        maps.append(average_precision_at_k(ranked_pids, rel_set, k=k_map))
-        recalls.append(recall_at_k(ranked_pids, rel_set, k=k_rec))
+            ndcgs.append(ndcg_at_k(ranked_pids, rel_dict, k=k_ndcg))
+            maps.append(average_precision_at_k(ranked_pids, rel_set, k=k_map))
+            recalls.append(recall_at_k(ranked_pids, rel_set, k=k_rec))
 
     return {
-        f"ndcg@{k_ndcg}": float(sum(ndcgs) / len(ndcgs)) if ndcgs else 0.0,
-        f"map@{k_map}":   float(sum(maps)  / len(maps))  if maps  else 0.0,
-        f"recall@{k_rec}":float(sum(recalls)/ len(recalls)) if recalls else 0.0,
+        f"ndcg@{k_ndcg}": float(sum(ndcgs)/len(ndcgs)) if ndcgs else 0.0,
+        f"map@{k_map}":   float(sum(maps)/len(maps))   if maps  else 0.0,
+        f"recall@{k_rec}":float(sum(recalls)/len(recalls)) if recalls else 0.0,
     }
-
