@@ -34,31 +34,15 @@ def recall_at_k(ranked_pids, rel_set, k=100):
     hits = sum(1 for pid in ranked_pids[:k] if pid in rel_set)
     return hits / len(rel_set)
 
-def qrels_df_to_dict(qrels_df: pd.DataFrame) -> dict[str, dict[str, int]]:
-    """Convert a qrels DataFrame into a nested dict: { qid: { pid: rel, ... }, ... }.
-    """
-    required_cols = {"qid", "pid", "rel"}
-    missing = required_cols - set(qrels_df.columns)
-    if missing:
-        raise ValueError(f"qrels_df is missing required columns: {missing}")
-
-    qrels_df = qrels_df.astype({"qid": str, "pid": str, "rel": int})
-    grouped = qrels_df.groupby("qid", sort=False)
-    return {
-        qid: {pid: rel for pid, rel in zip(grp["pid"], grp["rel"]) if rel > 0}
-        for qid, grp in grouped
-    }
-
 IDX_DIR = "indexes/whoosh"
 K1, B = 1.2, 0.75
 
-def evaluate_bm25_in_memory(queries_df,
+def evaluate_bm25(queries_df,
                              qrels_df,
                              topk_run=1000,
                              k_ndcg=10,
                              k_map=10,
-                             k_rec=100,
-                             progress=True):
+                             k_rec=100):
     """Evaluate BM25 retrieval using Whoosh index.
 
     Parameters
@@ -81,8 +65,7 @@ def evaluate_bm25_in_memory(queries_df,
     with ix.searcher(weighting=BM25F(k1=K1, b=B)) as searcher:
         qp = QueryParser("text", schema=ix.schema, group=OrGroup)
         it = queries_df[["qid","query"]].itertuples(index=False, name=None)
-        if progress:
-            it = tqdm(it, total=len(queries_df), desc="Evaluating", unit="q")
+        it = tqdm(it, total=len(queries_df), desc="Evaluating", unit="q")
 
         for qid, query in it:
             q = qp.parse(" ".join(tokenize(query)))

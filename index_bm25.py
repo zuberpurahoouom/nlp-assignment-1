@@ -21,13 +21,10 @@ SCHEMA = Schema(
 IDX_DIR = "indexes/whoosh"
 K1, B = 1.2, 0.75
 
-def build_bm25(df, out_dir=IDX_DIR, num_workers=None, limitmb=256, multisegment=True, use_pretok=True):
+def build_bm25(df, out_dir=IDX_DIR, num_workers=None, limitmb=256):
     """
     num_workers: number of worker processes (default: min(os.cpu_count(), len(df)))
     limitmb: memory per process for indexing buffers
-    multisegment=True: faster commit (no big merge); you can ix.optimize() later if desired
-    use_pretok=True: pass pre-tokenized text (" ".join(tokenize(...))) if True;
-                     else pass raw text and let the schema's analyzer handle it.
     """
     os.makedirs(out_dir, exist_ok=True)
     ix = index.create_in(out_dir, SCHEMA)
@@ -38,17 +35,14 @@ def build_bm25(df, out_dir=IDX_DIR, num_workers=None, limitmb=256, multisegment=
 
     try:
         # Multiprocess writer (Whoosh will spawn worker processes)
-        writer = ix.writer(procs=num_workers, limitmb=limitmb, multisegment=multisegment)
+        writer = ix.writer(procs=num_workers, limitmb=limitmb)
     except TypeError:
         # older Whoosh: fall back to single-process + async commit
         writer = AsyncWriter(ix)
 
     it = zip(df["pid"].astype(str), df["text"].astype(str))
     for pid, text in tqdm(it, total=len(df), desc="Indexing (Whoosh BM25)"):
-        if use_pretok:
-            writer.add_document(pid=pid, text=" ".join(tokenize(text)))
-        else:
-            writer.add_document(pid=pid, text=text)
+         writer.add_document(pid=pid, text=" ".join(tokenize(text)))
 
     writer.commit()
     # Optional: merge segments into one (slower; do only if needed)
