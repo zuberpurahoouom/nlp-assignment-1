@@ -22,3 +22,14 @@ def read_queries_dev(path="queries.dev.tsv", limit=None):
             rows.append((qid, query))
     df = pd.DataFrame(rows, columns=["qid", "query"])
     return df
+
+def read_triples_train_small(path="triples.train.small.tsv", limit=None):
+    rows = []
+    with open(path, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if limit is not None and i >= limit:
+                break
+            qid, pos_pid, neg_pid = line.rstrip("\n").split("\t")
+            rows.append((qid, pos_pid, neg_pid))
+    df = pd.DataFrame(rows, columns=["query", "positive", "negative"])
+    return df
