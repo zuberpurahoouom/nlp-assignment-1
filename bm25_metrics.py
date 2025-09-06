@@ -1,6 +1,5 @@
 import math
 
-import pandas as pd
 from tqdm.auto import tqdm
 from whoosh import index
 from whoosh.qparser import QueryParser, OrGroup
@@ -51,7 +50,6 @@ def evaluate_bm25(queries_df,
     qrels_df : DataFrame with columns ['qid','pid','rel']; rel>0 indicates relevance.
     topk_run : number of documents to retrieve per query.
     k_ndcg, k_map, k_rec : cutoffs for metrics.
-    progress : show tqdm progress bar.
     """
     qr = qrels_df.astype({"qid":str,"pid":str,"rel":int})
     grouped = qr.groupby("qid", sort=False)
