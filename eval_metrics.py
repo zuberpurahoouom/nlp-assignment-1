@@ -81,4 +81,5 @@ def evaluate_bm25(queries_df,
         f"ndcg@{k_ndcg}": float(sum(ndcgs)/len(ndcgs)) if ndcgs else 0.0,
         f"map@{k_map}":   float(sum(maps)/len(maps))   if maps  else 0.0,
         f"recall@{k_rec}":float(sum(recalls)/len(recalls)) if recalls else 0.0,
+        "num_queries": queries_df.shape[0]
     }
