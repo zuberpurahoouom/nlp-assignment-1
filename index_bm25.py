@@ -10,9 +10,6 @@ from whoosh.writing import AsyncWriter
 
 from pre_process import tokenize
 
-IDX_DIR = "indexes/whoosh"
-K1, B = 1.2, 0.75
-
 SCHEMA = Schema(
     pid=ID(stored=True, unique=True),
     text=TEXT(stored=False, analyzer=SpaceSeparatedTokenizer()),
@@ -30,23 +27,15 @@ def build_bm25(df, out_dir=IDX_DIR, num_workers=None, limitmb=256):
     ix = index.create_in(out_dir, SCHEMA)
 
     if num_workers is None:
-        # conservative default; feel free to set to os.cpu_count()
-        num_workers = max(1, os.cpu_count())
+        num_workers = os.cpu_count()
 
-    try:
-        # Multiprocess writer (Whoosh will spawn worker processes)
-        writer = ix.writer(procs=num_workers, limitmb=limitmb)
-    except TypeError:
-        # older Whoosh: fall back to single-process + async commit
-        writer = AsyncWriter(ix)
+    writer = ix.writer(procs=num_workers, limitmb=limitmb)
 
     it = zip(df["pid"].astype(str), df["text"].astype(str))
     for pid, text in tqdm(it, total=len(df), desc="Indexing (Whoosh BM25)"):
          writer.add_document(pid=pid, text=" ".join(tokenize(text)))
 
     writer.commit()
-    # Optional: merge segments into one (slower; do only if needed)
-    # ix.optimize()
 
 
 def query_bm25(query, topk=10):
