@@ -6,7 +6,6 @@ from whoosh.analysis import SpaceSeparatedTokenizer
 from whoosh.fields import Schema, TEXT, ID
 from whoosh.qparser import QueryParser, OrGroup
 from whoosh.scoring import BM25F
-from whoosh.writing import AsyncWriter
 
 from pre_process import tokenize
 
