@@ -7,7 +7,8 @@ from whoosh.fields import Schema, TEXT, ID
 from whoosh.qparser import QueryParser, OrGroup
 from whoosh.scoring import BM25F
 
-from pre_process import tokenize
+import re
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 SCHEMA = Schema(
     pid=ID(stored=True, unique=True),
@@ -44,3 +45,11 @@ def query_bm25(query, topk=10):
     with ix.searcher(weighting=BM25F(k1=K1, b=B)) as s:
         res = s.search(q, limit=topk)
         return [(hit["pid"], float(hit.score)) for hit in res]
+
+STOPWORDS = set(ENGLISH_STOP_WORDS)
+TOKEN_RE = re.compile(r"[a-z0-9]+'[a-z0-9]+|[a-z0-9]+")
+
+def tokenize(text: str):
+    text = text.lower()
+    tokens = TOKEN_RE.findall(text)
+    return [t for t in tokens if t not in STOPWORDS and len(t) > 1]
